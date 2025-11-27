@@ -30,17 +30,28 @@ jobs:
         import subprocess
         import time
         
-        # Start server
+        print("Starting Uvicorn server...")
         server = subprocess.Popen(["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"])
-        time.sleep(3)  # Wait for server to start
+        time.sleep(5)
         
-        # Test endpoint
-        response = requests.get("http://127.0.0.1:8000/")
-        assert response.status_code == 200
-        assert response.json()["message"] == "Hello World from FastAPI!"
-        
+        try:
+            print("Testing endpoint...")
+            response = requests.get("http://127.0.0.1:8000/")
+            
+            assert response.status_code == 200, f"Status code is {response.status_code}, expected 200"
+            
+            expected_msg = "API do mieszkań we Łodzi"
+            actual_msg = response.json()["message"]
+            
+            assert actual_msg == expected_msg, f"Expected '{expected_msg}', but got '{actual_msg}'"
+            
+            print("✓ API test passed successfully")
+        except Exception as e:
+            print(f"TEST FAILED: {e}")
+            server.terminate()
+            exit(1)
+            
         server.terminate()
-        print("✓ API test passed")
         EOF
 
   docker-build-push:
@@ -56,6 +67,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
+    - name: Lowercase the repo name
+      run: echo "REPO=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v2
       with:
@@ -65,8 +79,8 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t ghcr.io/${{ github.repository }}/fastapi:latest .
+        docker build -t ghcr.io/${{ env.REPO }}/fastapi:latest .
 
     - name: Push Docker image
       run: |
-        docker push ghcr.io/${{ github.repository }}/fastapi:latest
+        docker push ghcr.io/${{ env.REPO }}/fastapi:latest
