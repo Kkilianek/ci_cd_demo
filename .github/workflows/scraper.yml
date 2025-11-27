@@ -14,12 +14,16 @@ jobs:
             pages: 8
           - city: krakow
             pages: 10
+          - city: wroclaw
+            pages: 12
+          - city: gdansk
+            pages: 10
+          - city: sopot
+            pages: 6
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -32,6 +36,21 @@ jobs:
 
       - name: Run scraper for ${{ matrix.city }}
         run: python scraper.py --city ${{ matrix.city }} --pages ${{ matrix.pages }} --output data/ogloszenia_${{ matrix.city }}.csv
+
+      # --- BONUS 1: WALIDACJA DANYCH (Sprawdzamy czy plik nie jest pusty) ---
+      - name: Validate data
+        run: |
+          if [ ! -s data/ogloszenia_${{ matrix.city }}.csv ]; then
+            echo "Error: Plik CSV jest pusty!"
+            exit 1
+          fi
+          LINE_COUNT=$(wc -l < data/ogloszenia_${{ matrix.city }}.csv)
+          if [ "$LINE_COUNT" -le 1 ]; then
+             echo "Error: Plik zawiera tylko nagłówek lub jest pusty!"
+             exit 1
+          else
+             echo "Success: Pobrano $(($LINE_COUNT - 1)) ofert dla ${{ matrix.city }}."
+          fi
 
       - name: Upload scraped data
         uses: actions/upload-artifact@v4
@@ -50,30 +69,39 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: data-*
-          merge-multiple: false
-          path: artifacts
+          merge-multiple: true
+          path: data
 
-      - name: Move artifacts to data directory
+      # --- BONUS 2: SCALANIE PLIKÓW (MERGE) ---
+      - name: Merge all CSVs
         run: |
-          mkdir -p data
-          find artifacts -name "*.csv" -exec cp {} data/ \;
+          echo "Scalanie plików..."
+          # Pobieramy nagłówek z pierwszego znalezionego pliku CSV
+          head -n 1 $(ls data/*.csv | head -n 1) > data/all_offers.csv
+          # Doklejamy zawartość reszty plików (z pominięciem nagłówków, start od 2 linii)
+          tail -n +2 -q data/ogloszenia_*.csv >> data/all_offers.csv
+          echo "Utworzono data/all_offers.csv"
 
-      - name: Commit and push all changes
+      # --- BONUS 3: OSOBNY BRANCH (data-history) ---
+      - name: Commit and push to data-history branch
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Tworzymy lub przełączamy się na branch data-history
+          git checkout -b data-history || git checkout data-history
+          
           git add -f data/*.csv
+          
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update scraped data for all cities [$(date +'%Y-%m-%d %H:%M:%S')]"
-            git push origin main
+            git commit -m "Update scraped data (Total merge + cities) [$(date +'%Y-%m-%d %H:%M:%S')]"
+            # Pushujemy na nowy branch
+            git push -f origin data-history
           fi
