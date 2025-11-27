@@ -2,3 +2,8 @@ fastapi
 uvicorn[standard]
 requests
 beautifulsoup4
+joblib
+scikit-learn
+pandas
+numpy
+sqlalchemy
