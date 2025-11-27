@@ -1,39 +1,79 @@
 name: Weekly Scraper
 
 on:
-  schedule:
-    - cron: "0 10 * * 1"  # every monday at 10:00 UTC
   workflow_dispatch:
-
 
 jobs:
   run-scraper:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - city: lodz
+            pages: 8
+          - city: krakow
+            pages: 10
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
+          cache: 'pip'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run scraper
-        run: python scraper.py --city lodz --pages 1 --output data/ogloszenia_lodz.csv
+      - name: Run scraper for ${{ matrix.city }}
+        run: python scraper.py --city ${{ matrix.city }} --pages ${{ matrix.pages }} --output data/ogloszenia_${{ matrix.city }}.csv
 
-      - name: Commit changes
+      - name: Upload scraped data
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-${{ matrix.city }}
+          path: data/ogloszenia_${{ matrix.city }}.csv
+          retention-days: 1
+
+  commit-changes:
+    runs-on: ubuntu-latest
+    needs: run-scraper
+    permissions:
+      contents: write
+    if: always()
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: data-*
+          merge-multiple: false
+          path: artifacts
+
+      - name: Move artifacts to data directory
+        run: |
+          mkdir -p data
+          find artifacts -name "*.csv" -exec cp {} data/ \;
+
+      - name: Commit and push all changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           git add -f data/*.csv
-          git commit -m "Update scraped data [$(date +'%Y-%m-%d %H:%M:%S')]" || echo "No changes to commit"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update scraped data for all cities [$(date +'%Y-%m-%d %H:%M:%S')]"
+            git push origin main
+          fi

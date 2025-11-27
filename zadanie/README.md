@@ -12,7 +12,7 @@ Twoim zadaniem jest:
 
 ---
 
-# **Kod aplikacji (FASTAPI + DB + ML Prediction)**
+# **Kod aplikacji (FASTAPI + DB + ML Prediction) z zadania 2_FastAPI**
 
 Plik `main.py`:
 
